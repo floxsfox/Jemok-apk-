@@ -1,0 +1,49 @@
+name: Build APK dari ZIP
+
+# Taruh file ini di .github/workflows/ dan unggah jemok-pile.zip di root repo.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "*.zip"
+      - ".github/workflows/build-dari-zip.yml"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ekstrak ZIP (sementara di runner)
+        run: |
+          set -e
+          ZIP="$(ls -1 *.zip 2>/dev/null | head -n1)"
+          if [ -z "$ZIP" ]; then echo "Tidak ada file .zip di root repo"; exit 1; fi
+          echo "Memakai: $ZIP"
+          mkdir -p "$RUNNER_TEMP/src"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/src"
+          SETTINGS="$(find "$RUNNER_TEMP/src" -maxdepth 3 -name settings.gradle.kts | head -n1)"
+          if [ -z "$SETTINGS" ]; then echo "settings.gradle.kts tidak ditemukan di dalam ZIP"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon --stacktrace assembleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JemokPile-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          
